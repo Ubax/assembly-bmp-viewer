@@ -1,3 +1,15 @@
+;;;;; test vs cmp
+;;;;; rozkazy lancuchowe
+; DS:SI - source
+; ES:DI - destinstion
+; CX	- repetitions
+; REP, REPZ - powtarzaj dopoki nie rowne, REPNZ - powtarzaj dopoki rowne
+; MOVSB, MOVSW - przesyla do celu
+; LOADSB, LOADSW - przesyla do akumulatora
+; STOSB, STOSW - z akumulatora do pamieci
+; SCASB, SCASW - Porownanie bajtu lub bliku danych z zawartoscia akumulatora (ax)
+; CMP
+
 data1 segment
 
 NO_FILE_NAME_MSG	db	"No file name$"
@@ -5,7 +17,7 @@ WRONG_HEADER_MSG	db	"Wrong bmp header$"
 TOO_BIG_IMAGE_MSG	db	"The image is too big. Max size: 320x200$"
 FILE_OPENING_MSG	db	"File opening error. Probably file doesn't exist$"
 
-fileName        	db	100 dup(0)
+fileName        	db	"abc.bmp$";100 dup(0)
 
 data1 ends
 
@@ -15,7 +27,7 @@ start:
 	mov	ss,ax
 	mov	sp,offset top1  ; inicjowanie stosu
  
-	call get_file_name
+	;call get_file_name
 	
 	call bmp_open_file 
 	cmp ax, 0
@@ -28,17 +40,32 @@ start:
 	call change_ds_to_bitmap
 	
 	mov ax, word ptr ds:[bmp_width]
-	cmp ax, 320
-	jg too_big_image
+	;cmp ax, 320
+	;jg too_big_image
 	
 	mov ax, word ptr ds:[bmp_height]
-	cmp ax, 200
-	jg too_big_image
-	
-	
+	;cmp ax, 200
+	;jg too_big_image
 	
 	;Change mode to vga 320x200
+	mov	al,13h   ;tryb graficzny 320 x 200
+	mov	ah,0 ; polecenie zmiany trybu
+	int	10h
 	
+	call bmp_set_palette
+	
+	mov bl, 50 ;x offset
+	mov bh, 40 ;y offset
+	call bmp_load_pixel_map
+	
+	;call bmp_show_pixel_map
+	
+	xor	ax,ax
+	int	16h			;wait for key
+	
+	mov	al,3
+	mov	ah,0 ; polecenie zmiany trybu
+	int	10h
  
 	call bmp_close_file
 	
@@ -92,7 +119,8 @@ change_ds_to_data:
 
 include io.asm
 include bmp.asm
- 
+;include show_bmp.asm
+
 code1	ends
  
  
@@ -107,8 +135,7 @@ bmp_segment segment
 	bmp_dib				db	120 dup('$')
 	bmp_width			dw	0
 	bmp_height			dw 	0
-	bmp_pixel_map		db	320*200+2 dup(0)
-	bmp_bufor			db	16 dup(0)
+	bmp_bufor			db	2048 dup(0)
 bmp_segment ends
  
 end start
