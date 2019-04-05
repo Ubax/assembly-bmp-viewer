@@ -126,6 +126,11 @@ set_pallete:
 		jl set_pallete_loop
 		
 show_bmp:
+	mov bx, word ptr ds:[file]
+    xor cx, cx
+	mov dx, word ptr ds:[bmp_header+10]
+    mov ax, 4200h
+    int 21h
 	mov al, 225
 	call clear_display
 	mov cx, 0
