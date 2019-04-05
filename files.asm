@@ -17,7 +17,7 @@ WRONG_HEADER_MSG	db	"Wrong bmp header$"
 TOO_BIG_IMAGE_MSG	db	"The image is too big. Max size: 320x200$"
 FILE_OPENING_MSG	db	"File opening error. Probably file doesn't exist$"
 
-fileName        	db	"test1.bmp$";100 dup(0)
+fileName        	db	"small.bmp$";100 dup(0)
 
 file				dw	?
 bmp_header			db	15 dup(0)
@@ -154,45 +154,65 @@ after_set_del_y:
 	call clear_display
 	mov cx, 0
 	y_loop:
+		mov word ptr cs:[cur_y], cx
 		mov bx, 0
 		x_loop:
-			push bx
-			push cx
+			mov word ptr cs:[cur_x], bx
+			
 			mov	dx,offset bmp_bufor
 			mov	bx,word ptr ds:[file]	
 			mov	cx,1  ;bgra
 			mov	ah,3fh
 			int	21h
-			pop cx
-			pop bx
-			push bx
-			push cx
-			add cx, word ptr cs:[del_y]
-			mov	word ptr cs:[point_y], cx
+			
 			mov al, byte ptr ds:[bmp_bufor]	
 			mov	byte ptr cs:[point_k], al
-			add bx, word ptr cs:[del_x]
+			
 			xor ax,ax
+			mov cx, word ptr cs:[cur_y]
+			add cx, word ptr cs:[del_y]
 			mov al, byte ptr cs:[zoom_in]
-			mul bx
-			mov bx, ax
+			mul cx
+			mov	word ptr cs:[point_y], ax
+
 			xor ax,ax
 			mov al, byte ptr cs:[zoom_in]
 			mov dx, ax
-			x_loop_zoom:
+			y_loop_zoom:
+				mov ax, word ptr cs:[point_y]
+				cmp ax, 200
+				jge after_y_loop_zoom
 				push dx
-				mov	word ptr cs:[point_x], bx
-				call draw_point
+				xor ax,ax
+				mov al, byte ptr cs:[zoom_in]
+				mov bx, word ptr cs:[cur_x]
+				add bx, word ptr cs:[del_x]
+				mul bx
+				mov bx, ax
+				mov word ptr cs:[point_x], bx
+				xor ax,ax
+				mov al, byte ptr cs:[zoom_in]
+				mov dx, ax
+				x_loop_zoom:
+					mov ax, word ptr cs:[point_x]
+					cmp ax, 320
+					jge after_x_loop_zoom
+					push dx
+					call draw_point
+					pop dx
+					inc word ptr cs:[point_x]
+					dec dx
+					cmp dx, 0
+					jg x_loop_zoom
+				after_x_loop_zoom:
+				inc word ptr cs:[point_y]
 				pop dx
-				inc bx
-				cmp bx, 320
-				jge after_x_loop_zoom
 				dec dx
 				cmp dx, 0
-				jg x_loop_zoom
-			after_x_loop_zoom:
-			pop cx
-			pop bx
+				jg y_loop_zoom
+			after_y_loop_zoom:
+			mov bx, word ptr cs:[cur_x]
+			mov cx, word ptr cs:[cur_y]
 			inc bx
 			mov ax, word ptr ds:[bmp_width]
 			cmp bx, ax
@@ -358,3 +378,4 @@ top1	dw	?
 stos1	ends
  
 end start
+
