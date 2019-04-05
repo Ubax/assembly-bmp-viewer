@@ -31,6 +31,8 @@ RIGHT_KEY			equ 77
 UP_KEY				equ 72
 DOWN_KEY			equ 80
 ESC_KEY				equ 1
+ZOOMIN_KEY			equ 0Dh
+ZOOMOUT_KEY			equ	0Ch
 
 data1 ends
 
@@ -131,6 +133,23 @@ show_bmp:
 	mov dx, word ptr ds:[bmp_header+10]
     mov ax, 4200h
     int 21h
+	
+	mov word ptr cs:[del_x], 0
+	mov word ptr cs:[del_y], 0
+	mov ax, word ptr cs:[offset_x]
+	cmp ax, 0
+	jg set_del_x
+	jmp after_set_del_x
+set_del_x:
+	mov word ptr cs:[del_x], ax
+after_set_del_x:
+	mov ax, word ptr cs:[offset_y]
+	cmp ax, 0
+	jg set_del_y
+	jmp after_set_del_y
+set_del_y:
+	mov word ptr cs:[del_y], ax
+after_set_del_y:
 	mov al, 225
 	call clear_display
 	mov cx, 0
@@ -146,13 +165,32 @@ show_bmp:
 			int	21h
 			pop cx
 			pop bx
-			mov	word ptr cs:[point_x], bx
-			mov	word ptr cs:[point_y], cx
 			push bx
 			push cx
+			add cx, word ptr cs:[del_y]
+			mov	word ptr cs:[point_y], cx
 			mov al, byte ptr ds:[bmp_bufor]	
 			mov	byte ptr cs:[point_k], al
-			call draw_point
+			add bx, word ptr cs:[del_x]
+			xor ax,ax
+			mov al, byte ptr cs:[zoom_in]
+			mul bx
+			mov bx, ax
+			xor ax,ax
+			mov al, byte ptr cs:[zoom_in]
+			mov dx, ax
+			x_loop_zoom:
+				push dx
+				mov	word ptr cs:[point_x], bx
+				call draw_point
+				pop dx
+				inc bx
+				cmp bx, 320
+				jge after_x_loop_zoom
+				dec dx
+				cmp dx, 0
+				jg x_loop_zoom
+			after_x_loop_zoom:
 			pop cx
 			pop bx
 			inc bx
@@ -163,29 +201,43 @@ show_bmp:
 		mov ax, word ptr ds:[bmp_height]
 		cmp cx, ax
 		jl y_loop
-	;mov ax, 0a000h
-	;mov ds, ax
-	;mov dx, 64000-320
-	;mov cx,320
-;image:
-	;mov	ah,3fh
-	;int	21h
-	;jnc wrong_header
+	jmp key_loop
+zoom_in_show_loop:
 	
-	;sub dx, 320
-	;jnc image
+right_key_pressed:
+	add word ptr cs:[offset_x], 3
+	jmp show_bmp
+left_key_pressed:
+	sub word ptr cs:[offset_x], 3
+	jmp show_bmp
+up_key_pressed:
+	sub word ptr cs:[offset_y], 3
+	jmp show_bmp
+down_key_pressed:
+	add word ptr cs:[offset_y], 3
+	jmp show_bmp
+zoomin_key_pressed:
+	inc byte ptr cs:[zoom_in]
+	jmp show_bmp
+zoomout_key_pressed:
+	dec byte ptr cs:[zoom_in]
+	jmp show_bmp
 key_loop:
 	in al, 60h		;get key scancode
 	cmp al, ESC_KEY		
 	je change_to_text
 	cmp al, LEFT_KEY		
-	je show_bmp
+	je left_key_pressed
 	cmp al, RIGHT_KEY		
-	je show_bmp
+	je right_key_pressed
 	cmp al, UP_KEY			
-	je show_bmp
+	je up_key_pressed
 	cmp al, DOWN_KEY		
-	je show_bmp
+	je down_key_pressed
+	cmp al, ZOOMIN_KEY		
+	je zoomin_key_pressed
+	cmp al, ZOOMOUT_KEY		
+	je zoomout_key_pressed
 	jmp key_loop
 	
 change_to_text:
@@ -215,9 +267,10 @@ a				db	0
 offset_x		dw	0
 offset_y		dw 	0
 zoom_in			db 	1
-zoom_out		db	1
 cur_x			dw	0
 cur_y			dw 	0
+del_x			dw	0
+del_y			dw 	0
 
 ;-------------------------------------------------------
 ;----------------------- POINT -------------------------
@@ -227,6 +280,9 @@ point_y		dw	?
 point_k		db	?
  
 draw_point:
+	push ax
+	push bx
+	push es
 	mov	ax,0a000h  ; adres segmentu pamieci w trybie graficznym
 	mov	es,ax
 	mov	ax,cs:[point_y]
@@ -237,6 +293,9 @@ draw_point:
 	mov	al,cs:[point_k]
 	mov	es:[bx],al
 draw_point_end:
+	pop es
+	pop bx
+	pop ax
 	ret
 ;-------------------------------------------------------
 	
