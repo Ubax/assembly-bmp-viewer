@@ -17,7 +17,7 @@ WRONG_HEADER_MSG	db	"Wrong bmp header$"
 TOO_BIG_IMAGE_MSG	db	"The image is too big. Max size: 320x200$"
 FILE_OPENING_MSG	db	"File opening error. Probably file doesn't exist$"
 
-fileName        	db	"small.bmp$";100 dup(0)
+fileName        	db	"test.bmp$";100 dup(0)
 
 file				dw	?
 bmp_header			db	15 dup(0)
@@ -127,15 +127,18 @@ set_pallete:
 		cmp si, 256
 		jl set_pallete_loop
 		
-show_bmp:
-	mov bx, word ptr ds:[file]
-    xor cx, cx
-	mov dx, word ptr ds:[bmp_header+10]
-    mov ax, 4200h
-    int 21h
-	
+show_bmp:	
+set_variables:
+	mov ax, word ptr cs:[zoom_in]
+	mov word ptr cs:[del_zoom_in], ax
+	cmp word ptr cs:[zoom_in], 1
+	jl set_del_zoom_in
+	jmp after_set_del_zoom_in
+set_del_zoom_in:
+	mov word ptr cs:[del_zoom_in], 1
+after_set_del_zoom_in:
+
 	mov word ptr cs:[del_x], 0
-	mov word ptr cs:[del_y], 0
 	mov ax, word ptr cs:[offset_x]
 	cmp ax, 0
 	jg set_del_x
@@ -143,104 +146,150 @@ show_bmp:
 set_del_x:
 	mov word ptr cs:[del_x], ax
 after_set_del_x:
+
+	mov word ptr cs:[del_y], 0
+	mov ax, word ptr ds:[bmp_height]
+	cmp ax, 200
+	jl after_set_del_y 
 	mov ax, word ptr cs:[offset_y]
 	cmp ax, 0
-	jg set_del_y
+	jl set_del_y
+	mov ax, word ptr ds:[bmp_height]
+	sub ax, 200
+	sub ax, word ptr cs:[offset_y]
+	cmp ax, 0
+	jl after_set_del_y
+	mov word ptr cs:[del_y], ax
 	jmp after_set_del_y
 set_del_y:
+	mov ax, word ptr ds:[bmp_height]
+	sub ax, 200
 	mov word ptr cs:[del_y], ax
+	mov ax, word ptr cs:[del_y]
+	cmp ax, 0
+	jge after_set_del_y
+	mov word ptr cs:[del_y], 0
 after_set_del_y:
+move_after_bottom_rows:
+	mov bx, word ptr cs:[del_y]
+	mov ax, word ptr ds:[bmp_header+10]
+	mov word ptr cs:[del_file_pos], ax
+	call move_absolute_file
+	mov ax, word ptr ds:[bmp_width]
+	;add ax, word ptr cs:[rem]
+	mov bx, word ptr cs:[del_y]
+	mul bx
+	mov bx, word ptr cs:[del_zoom_in]
+	mul bx
+	mov word ptr cs:[del_file_pos], ax
+	call move_relative_file
+	
+	
 	mov al, 225
 	call clear_display
-	mov cx, 0
+	
+	mov word ptr cs:[y_max], 199
+	mov ax, word ptr ds:[bmp_height]
+	cmp ax, 199
+	jl set_y_max
+	jmp after_set_y_max
+set_y_max:
+	mov word ptr cs:[y_max], ax
+after_set_y_max:
+	
+	mov word ptr cs:[x_max], 320
+	mov ax, word ptr ds:[bmp_width]
+	cmp ax, 320
+	jl set_x_max
+	jmp after_set_x_max
+set_x_max:
+	mov word ptr cs:[x_max], ax
+after_set_x_max:
+	mov word ptr cs:[y_it], 0
+	mov ax, word ptr cs:[y_max]
+	mov word ptr cs:[cur_y], ax 
 	y_loop:
-		mov word ptr cs:[cur_y], cx
-		mov bx, 0
+		mov word ptr cs:[cur_x], 0
+		mov word ptr cs:[x_it], 0
+		
+		mov	dx,offset bmp_bufor
+		mov	bx,word ptr ds:[file]	
+		mov	cx,word ptr ds:[bmp_width]
+		mov	ah,3fh
+		int	21h
 		x_loop:
-			mov word ptr cs:[cur_x], bx
+			mov si, word ptr cs:[cur_x]
+			add si, word ptr cs:[del_x]
+			mov ax, word ptr ds:[bmp_bufor + si]
+			mov byte ptr cs:[point_k], al
 			
-			mov	dx,offset bmp_bufor
-			mov	bx,word ptr ds:[file]	
-			mov	cx,1  ;bgra
-			mov	ah,3fh
-			int	21h
+			mov bx, word ptr cs:[cur_y]
+			mov ax, word ptr cs:[del_zoom_in]
+			mul bx
+			mov word ptr cs:[point_y], ax
 			
-			mov al, byte ptr ds:[bmp_bufor]	
-			mov	byte ptr cs:[point_k], al
-			
-			xor ax,ax
-			mov cx, word ptr cs:[cur_y]
-			add cx, word ptr cs:[del_y]
-			mov al, byte ptr cs:[zoom_in]
-			mul cx
-			mov	word ptr cs:[point_y], ax
-
-			xor ax,ax
-			mov al, byte ptr cs:[zoom_in]
-			mov dx, ax
-			y_loop_zoom:
+			mov ax, word ptr cs:[del_zoom_in]
+			mov word ptr cs:[zoom_y_it], ax
+			y_zoom_loop:
 				mov ax, word ptr cs:[point_y]
 				cmp ax, 200
-				jge after_y_loop_zoom
-				push dx
-				xor ax,ax
-				mov al, byte ptr cs:[zoom_in]
+				jge after_y_zoom_loop
+				
+				mov ax, word ptr cs:[del_zoom_in]
+				mov word ptr cs:[zoom_x_it], ax
 				mov bx, word ptr cs:[cur_x]
-				add bx, word ptr cs:[del_x]
+				mov ax, word ptr cs:[del_zoom_in]
 				mul bx
-				mov bx, ax
-				mov word ptr cs:[point_x], bx
-				xor ax,ax
-				mov al, byte ptr cs:[zoom_in]
-				mov dx, ax
-				x_loop_zoom:
+				mov word ptr cs:[point_x], ax
+				x_zoom_loop:
 					mov ax, word ptr cs:[point_x]
 					cmp ax, 320
-					jge after_x_loop_zoom
-					push dx
+					jge after_x_zoom_loop
+					
 					call draw_point
-					pop dx
 					inc word ptr cs:[point_x]
-					dec dx
-					cmp dx, 0
-					jg x_loop_zoom
-				after_x_loop_zoom:
+					
+					dec word ptr cs:[zoom_x_it]
+					mov ax, word ptr cs:[zoom_x_it]
+					cmp ax, 0
+					jg x_zoom_loop
+				after_x_zoom_loop:
 				inc word ptr cs:[point_y]
-				pop dx
-				dec dx
-				cmp dx, 0
-				jg y_loop_zoom
-			after_y_loop_zoom:
-			mov bx, word ptr cs:[cur_x]
-			mov cx, word ptr cs:[cur_y]
-			inc bx
-			mov ax, word ptr ds:[bmp_width]
-			cmp bx, ax
+				dec word ptr cs:[zoom_y_it]
+				mov ax, word ptr cs:[zoom_y_it]
+				cmp ax, 0
+				jg y_zoom_loop
+			after_y_zoom_loop:
+			inc word ptr cs:[cur_x]
+			mov ax, word ptr cs:[cur_x]
+			mov bx, word ptr cs:[x_max]
+			cmp ax, 320
 			jl x_loop
-		inc cx
-		mov ax, word ptr ds:[bmp_height]
-		cmp cx, ax
-		jl y_loop
+		dec word ptr cs:[cur_y]
+		mov ax, word ptr cs:[cur_y]
+		cmp ax, 0
+		jge y_loop
+	end_pixel_loop:
 	jmp key_loop
 zoom_in_show_loop:
 	
 right_key_pressed:
-	add word ptr cs:[offset_x], 3
+	add word ptr cs:[offset_x], 10
 	jmp show_bmp
 left_key_pressed:
-	sub word ptr cs:[offset_x], 3
+	sub word ptr cs:[offset_x], 10
 	jmp show_bmp
 up_key_pressed:
-	sub word ptr cs:[offset_y], 3
+	add word ptr cs:[offset_y], 5
 	jmp show_bmp
 down_key_pressed:
-	add word ptr cs:[offset_y], 3
+	sub word ptr cs:[offset_y], 5
 	jmp show_bmp
 zoomin_key_pressed:
-	inc byte ptr cs:[zoom_in]
+	inc word ptr cs:[zoom_in]
 	jmp show_bmp
 zoomout_key_pressed:
-	dec byte ptr cs:[zoom_in]
+	dec word ptr cs:[zoom_in]
 	jmp show_bmp
 key_loop:
 	in al, 60h		;get key scancode
@@ -286,11 +335,21 @@ b				db	0
 a				db	0
 offset_x		dw	0
 offset_y		dw 	0
-zoom_in			db 	1
+zoom_in			dw 	1
+del_zoom_in		dw	1
 cur_x			dw	0
 cur_y			dw 	0
 del_x			dw	0
 del_y			dw 	0
+rem				dw	0
+del_file_pos	dw	0
+zoom_x_it		dw	0
+zoom_y_it		dw	0
+x_it			dw	0
+y_it			dw	0
+x_max			dw	0
+y_max			dw 	0
+
 
 ;-------------------------------------------------------
 ;----------------------- POINT -------------------------
@@ -361,9 +420,36 @@ clear_display:
 		jl clear_display_rows_loop_beg
 	ret
 
-show_bitmap:	
+move_absolute_file:
+	push bx
+	push cx
+	push dx
+	push ax
+	mov bx, word ptr ds:[file]
+    xor cx, cx
+	mov dx, word ptr cs:[del_file_pos]
+    mov ax, 4200h
+    int 21h
+	pop ax
+	pop dx
+	pop cx
+	pop bx
+	ret
 	
-	
+move_relative_file:
+	push bx
+	push cx
+	push dx
+	push ax
+	mov bx, word ptr ds:[file]
+    xor cx, cx
+	mov dx, word ptr cs:[del_file_pos]
+    mov ax, 4201h
+    int 21h
+	pop ax
+	pop dx
+	pop cx
+	pop bx
 	ret
 
 include io.asm
@@ -378,4 +464,3 @@ top1	dw	?
 stos1	ends
  
 end start
-
