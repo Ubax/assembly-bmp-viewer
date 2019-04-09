@@ -17,7 +17,7 @@ WRONG_HEADER_MSG	db	"Wrong bmp header$"
 TOO_BIG_IMAGE_MSG	db	"The image is too big. Max size: 320x200$"
 FILE_OPENING_MSG	db	"File opening error. Probably file doesn't exist$"
 
-fileName        	db	"test.bmp$";100 dup(0)
+fileName        	db	"agh.bmp$";100 dup('$');
 
 file				dw	?
 bmp_header			db	15 dup(0)
@@ -48,7 +48,7 @@ start:
 	mov ds, ax
  
 open_file:
-	;call get_file_name	
+	call get_file_name	
 	mov	dx,offset fileName
 	mov	al,0  ;tylko do odczytu
 	mov	ah,3dh   ;otworz
@@ -58,33 +58,7 @@ open_file:
 
 	mov	word ptr ds:[file],ax
 		
-read_header:
-	mov	dx,offset bmp_header
-	mov	bx,word ptr ds:[file]	
-	mov	cx,14  ;ilosc bajtow do czytania
-	mov	ah,3fh
-	int	21h
-	
-	mov ax, word ptr ds:[bmp_header] ;wczytanie na raz BM
-	cmp al, 'B'
-	jne wrong_header
-	cmp ah, 'M'
-	jne wrong_header
-	
-	mov	dx,offset bmp_dib
-	mov	bx,word ptr ds:[file]	
-	mov	cx,40  ;ilosc bajtow do czytania
-	mov	ah,3fh
-	int	21h
-	
-	mov al, byte ptr ds:[bmp_dib + 4]
-	mov ah, byte ptr ds:[bmp_dib + 5]
-	mov word ptr ds:[bmp_width], ax
-	
-	mov al, byte ptr ds:[bmp_dib + 8]
-	mov ah, byte ptr ds:[bmp_dib + 9]
-	mov word ptr ds:[bmp_height], ax
-
+	call read_header
 	
 	mov ax, word ptr ds:[bmp_width]
 	
@@ -109,7 +83,7 @@ set_variables:
 set_del_zoom_in:
 	mov word ptr cs:[del_zoom_in], 1
 	neg ax
-	inc ax
+	add ax, 2
 	mov word ptr cs:[del_zoom_out], ax
 after_set_del_zoom_in:
 
@@ -122,15 +96,33 @@ set_del_x:
 	mov word ptr cs:[del_x], ax
 after_set_del_x:
 
+	mov word ptr cs:[y_max], 199
+	xor dx,dx
+	mov ax, word ptr ds:[bmp_height]
+	mov cx, word ptr cs:[del_zoom_out]
+	;shr ax, cl
+	cmp ax, 199
+	jl set_y_max
+	jmp after_set_y_max
+set_y_max:
+	mov word ptr cs:[y_max], ax
+after_set_y_max:
+	mov bx, 200
+	mov cx, word ptr cs:[del_zoom_out]
+	dec cx
+	shl bx, cl
+	mov cx, word ptr cs:[del_zoom_in]
+	dec cx
+	shr bx, cl
 	mov word ptr cs:[del_y], 0
 	mov ax, word ptr ds:[bmp_height]
-	cmp ax, 200
+	cmp ax, bx
 	jl after_set_del_y 
 	mov ax, word ptr cs:[offset_y]
 	cmp ax, 0
 	jl set_del_y
 	mov ax, word ptr ds:[bmp_height]
-	sub ax, 200
+	sub ax, bx
 	sub ax, word ptr cs:[offset_y]
 	cmp ax, 0
 	jl after_set_del_y
@@ -138,66 +130,47 @@ after_set_del_x:
 	jmp after_set_del_y
 set_del_y:
 	mov ax, word ptr ds:[bmp_height]
-	sub ax, 200
+	sub ax, bx
 	mov word ptr cs:[del_y], ax
 	mov ax, word ptr cs:[del_y]
 	cmp ax, 0
 	jge after_set_del_y
 	mov word ptr cs:[del_y], 0
 after_set_del_y:
-move_after_bottom_rows:
-	mov bx, word ptr cs:[del_y]
-	mov ax, word ptr ds:[bmp_header+10]
-	mov word ptr cs:[del_file_pos], ax
-	call move_absolute_file
-	mov ax, word ptr ds:[bmp_width]
-	;add ax, word ptr cs:[rem]
-	mov bx, word ptr cs:[del_y]
-	mul bx
-	mov cx, dx
-	mov bx, word ptr cs:[del_zoom_in]
-	mul bx
-	push ax
-	mov ax, cx
-	mul bx
-	add dx, ax
-	mov cx, dx
-	pop dx
-	call move_relative_file
 	
+	mov al, 0
+	call clear_display
 	
-	mov al, 225
-	;call clear_display
-	
-	mov word ptr cs:[y_max], 199
-	mov ax, word ptr ds:[bmp_height]
-	cmp ax, 199
-	jl set_y_max
-	jmp after_set_y_max
-set_y_max:
-	mov word ptr cs:[y_max], ax
-after_set_y_max:
-	
+	xor dx,dx
 	mov word ptr cs:[x_max], 320
 	mov ax, word ptr ds:[bmp_width]
+	mov cx, word ptr cs:[del_zoom_out]
+	div cx
 	cmp ax, 320
 	jl set_x_max
 	jmp after_set_x_max
 set_x_max:
 	mov word ptr cs:[x_max], ax
 after_set_x_max:
+
+	call move_after_bottom_rows	
+	
 	mov word ptr cs:[y_it], 0
 	mov ax, word ptr cs:[y_max]
 	mov word ptr cs:[cur_y], ax 
 	y_loop:
 		mov word ptr cs:[cur_x], 0
 		mov word ptr cs:[x_it], 0
-		
-		mov	dx,offset bmp_bufor
-		mov	bx,word ptr ds:[file]	
-		mov	cx,word ptr ds:[bmp_width]
-		mov	ah,3fh
-		int	21h
+		mov si, word ptr cs:[del_zoom_out]
+		y_zoom_out_loop:
+			mov	dx,offset bmp_bufor
+			mov	bx,word ptr ds:[file]	
+			mov	cx,word ptr ds:[bmp_width]
+			mov	ah,3fh
+			int	21h
+			dec si
+			cmp si, 0
+			jg y_zoom_out_loop
 		x_loop:
 			mov si, word ptr cs:[cur_x]
 			add si, word ptr cs:[del_x]
@@ -250,7 +223,7 @@ after_set_x_max:
 			inc word ptr cs:[cur_x]
 			mov ax, word ptr cs:[cur_x]
 			mov bx, word ptr cs:[x_max]
-			cmp ax, 320
+			cmp ax, bx
 			jl x_loop
 		dec word ptr cs:[cur_y]
 		mov ax, word ptr cs:[cur_y]
@@ -261,16 +234,34 @@ after_set_x_max:
 zoom_in_show_loop:
 	
 right_key_pressed:
-	add word ptr cs:[offset_x], 10
+	mov ax, 2
+	mov cx, word ptr cs:[del_zoom_out]
+	shl ax, cl
+	add word ptr cs:[offset_x], ax
 	jmp show_bmp
 left_key_pressed:
-	sub word ptr cs:[offset_x], 10
+	mov ax, word ptr cs:[offset_x]
+	cmp ax, 0
+	jle key_loop
+	mov ax, 2
+	mov cx, word ptr cs:[del_zoom_out]
+	shl ax, cl
+	sub word ptr cs:[offset_x], ax
 	jmp show_bmp
 up_key_pressed:
-	sub word ptr cs:[offset_y], 5
+	mov ax, word ptr cs:[offset_y]
+	cmp ax, 0
+	jle key_loop
+	mov ax, 2
+	mov cx, word ptr cs:[del_zoom_out]
+	shl ax, cl
+	sub word ptr cs:[offset_y], ax
 	jmp show_bmp
 down_key_pressed:
-	add word ptr cs:[offset_y], 5
+	mov ax, 2
+	mov cx, word ptr cs:[del_zoom_out]
+	shl ax, cl
+	add word ptr cs:[offset_y], ax
 	jmp show_bmp
 zoomin_key_pressed:
 	inc word ptr cs:[zoom_in]
@@ -286,6 +277,9 @@ reg_pal_key_pressed:
 	jmp show_bmp
 inv_pal_key_pressed:
 	call set_inverted_pallete
+	jmp show_bmp
+darker_pal_key_pressed:
+	call set_darker_pallete
 	jmp show_bmp
 key_loop:
 	in al, 60h		;get key scancode
@@ -309,6 +303,8 @@ key_loop:
 	je mono_pal_key_pressed
 	cmp al, MONO_PAL_KEY+1
 	je inv_pal_key_pressed
+	cmp al, MONO_PAL_KEY+2		
+	je darker_pal_key_pressed
 	jmp key_loop
 	
 change_to_text:
@@ -449,119 +445,8 @@ move_relative_file:
 	pop bx
 	ret
 	
-set_pallete:
-	mov word ptr cs:[del_file_pos], 54
-	call move_absolute_file
-	mov dx, 3c8h	;RGB write port
-	
-	xor si, si
-	set_pallete_loop:
-		mov	dx,offset bmp_bufor
-		mov	bx,word ptr ds:[file]	
-		mov	cx,4  ;bgra
-		mov	ah,3fh
-		int	21h
-		mov dx, 3c8h
-		mov ax, si
-		out dx, al
-		inc dx
-		mov cx,2
-		mov al, byte ptr ds:[bmp_bufor+2]
-		shr al, cl
-		out dx, al
-		mov al, byte ptr ds:[bmp_bufor+1]
-		shr al, cl
-		out dx, al
-		mov al, byte ptr ds:[bmp_bufor]
-		shr al, cl
-		out dx, al
-		dec dx
-		inc si
-		cmp si, 256
-		jl set_pallete_loop
-		ret
-		
-set_mono_pallete:
-	mov word ptr cs:[del_file_pos], 54
-	call move_absolute_file
-	mov dx, 3c8h	;RGB write port
-	
-	xor si, si
-	set_mono_pallete_loop:
-		mov	dx,offset bmp_bufor
-		mov	bx,word ptr ds:[file]	
-		mov	cx,4  ;bgra
-		mov	ah,3fh
-		int	21h
-		mov dx, 3c8h
-		mov ax, si
-		out dx, al
-		inc dx
-		mov cx,2
-		xor bx, bx
-		mov al, byte ptr ds:[bmp_bufor+2]
-		shr al, cl
-		add bl, al
-		mov al, byte ptr ds:[bmp_bufor+1]
-		shr al, cl
-		add bl, al
-		mov al, byte ptr ds:[bmp_bufor]
-		shr al, cl
-		add bl, al
-		mov al, bl
-		mov bl, 3
-		div bl
-		out dx, al
-		out dx, al
-		out dx, al
-		dec dx
-		inc si
-		cmp si, 256
-		jl set_mono_pallete_loop
-		ret
 
-set_inverted_pallete:
-	mov word ptr cs:[del_file_pos], 54
-	call move_absolute_file
-	mov dx, 3c8h	;RGB write port
-	
-	xor si, si
-	set_inverted_pallete_loop:
-		mov	dx,offset bmp_bufor
-		mov	bx,word ptr ds:[file]	
-		mov	cx,4  ;bgra
-		mov	ah,3fh
-		int	21h
-		mov dx, 3c8h
-		mov ax, si
-		out dx, al
-		inc dx
-		mov cx,2
-		xor bx, bx
-		mov al, byte ptr ds:[bmp_bufor+2]
-		shr al, cl
-		mov bl, 63
-		sub bl, al
-		mov al, bl
-		out dx, al
-		mov al, byte ptr ds:[bmp_bufor+1]
-		shr al, cl
-		mov bl, 63
-		sub bl, al
-		mov al, bl
-		out dx, al
-		mov al, byte ptr ds:[bmp_bufor]
-		shr al, cl
-		mov bl, 63
-		sub bl, al
-		mov al, bl
-		out dx, al
-		
-		dec dx
-		inc si
-		cmp si, 256
-		jl set_inverted_pallete_loop
-		ret
+include bmp.asm
 include io.asm
 ;include show_bmp.asm
 
